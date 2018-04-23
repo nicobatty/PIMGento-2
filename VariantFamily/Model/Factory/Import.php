@@ -152,7 +152,7 @@ class Import extends Factory
         $tmpTable = $this->_entities->getTableName($this->getCode());
 
         $query = $connection->select()
-            ->from(false, ['axis' => 'f._axis'])
+            ->from(false, ['axis' => 'IF(p.parent != \'\', SUBSTRING_INDEX(f._axis, \',\', -1), f._axis)'])
             ->joinLeft(
                 ['f' => $tmpTable],
                 'p.family_variant = f.code',
