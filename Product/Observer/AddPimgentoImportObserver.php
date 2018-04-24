@@ -72,6 +72,10 @@ class AddPimgentoImportObserver extends AbstractAddImportObserver implements Obs
                 'method'  => 'createConfigurable',
             ),
             array(
+                'comment' => __('Create parent configurable product'),
+                'method'  => 'createParentConfigurable',
+            ),
+            array(
                 'comment' => __('Match code with Magento ID'),
                 'method'  => 'matchEntity',
             ),

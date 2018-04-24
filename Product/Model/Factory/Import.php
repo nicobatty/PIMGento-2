@@ -354,6 +354,125 @@ class Import extends Factory
         }
     }
 
+    public function createParentConfigurable()
+    {
+        $resource = $this->_entities->getResource();
+        $connection = $resource->getConnection();
+        $tmpTable = $this->_entities->getTableName($this->getCode());
+
+        if ($connection->tableColumnExists($tmpTable, 'parent')) {
+            $groupColumn = 'parent';
+        } else if ($connection->tableColumnExists($tmpTable, 'groups')) {
+            $groupColumn = 'groups';
+        } else {
+            $groupColumn = null;
+        }
+
+        if (!$this->moduleIsEnabled('Pimgento_Variant')) {
+            $this->setStatus(false);
+            $this->setMessage(
+                __('Module Pimgento_Variant is not enabled')
+            );
+        } else if (!$groupColumn) {
+            $this->setStatus(false);
+            $this->setMessage(
+                __('Columns groups or parent not found')
+            );
+        } else {
+            $connection->addColumn($tmpTable, '_children', 'TEXT NULL');
+            $connection->addColumn($tmpTable, '_axis', 'VARCHAR(255) NULL');
+
+            $data = array(
+                'sku' => 'v2.' . $groupColumn,
+                'url_key' => 'v2.' . $groupColumn,
+                '_children' => new Expr('GROUP_CONCAT(e.sku SEPARATOR ",")'),
+                '_type_id' => new Expr('"configurable"'),
+                '_options_container' => new Expr('"container1"'),
+                '_status' => 'e._status',
+                '_axis' => 'v.axis'
+            );
+
+            if ($connection->tableColumnExists($tmpTable, 'family')) {
+                $data['family'] = 'e.family';
+            }
+
+            if ($connection->tableColumnExists($tmpTable, 'categories')) {
+                $data['categories'] = 'e.categories';
+            }
+
+            $additional = $this->_scopeConfig->getValue(productHelper::CONFIG_PIMGENTO_PRODUCT_CONFIGURABLE_ATTR);
+
+            if ($additional) {
+                $additional = $this->serializer->unserialize($additional);
+                if (is_array($additional)) {
+
+                    $stores = array_merge(
+                        $this->_helperConfig->getStores(array('lang')), // en_US
+                        $this->_helperConfig->getStores(array('lang', 'channel_code')), // en_US-channel
+                        $this->_helperConfig->getStores(array('channel_code')), // channel
+                        $this->_helperConfig->getStores(array('currency')), // USD
+                        $this->_helperConfig->getStores(array('channel_code', 'currency')), // channel-USD
+                        $this->_helperConfig->getStores(array('lang', 'channel_code', 'currency')) // en_US-channel-USD
+                    );
+
+                    foreach ($additional as $attribute) {
+                        $attr  = $attribute['attribute'];
+                        $value = $attribute['value'];
+
+                        $columns = array(trim($attr));
+                        foreach ($stores as $local => $affected) {
+                            $columns[] = trim($attr) . '-' . $local;
+                        }
+
+                        foreach ($columns as $column) {
+
+                            if ($column == 'enabled') {
+                                if ($connection->tableColumnExists($tmpTable, 'enabled')) {
+                                    $column = '_status';
+                                    if ($value == "0") {
+                                        $value = "2";
+                                    }
+                                }
+                            }
+
+                            if ($connection->tableColumnExists($tmpTable, $column)) {
+                                if (!strlen($value)) {
+                                    if ($connection->tableColumnExists($resource->getTable('pimgento_variant'), $column)) {
+                                        $data[$column] = 'v.' . $column;
+                                    } else {
+                                        $data[$column] = 'e.' . $column;
+                                    }
+                                } else {
+                                    $data[$column] = new Expr('"' . $value . '"');
+                                }
+                            }
+                        }
+                    }
+                }
+
+            }
+
+            $configurable = $connection->select()
+                ->from(array('e' => $tmpTable), $data)
+                ->joinInner(
+                    array('v2' => $resource->getTable('pimgento_variant')),
+                    'e.' . $groupColumn . ' = v2.code AND v2.parent <> \'\'',
+                    array()
+                )
+                ->joinInner(
+                    array('v' => $resource->getTable('pimgento_variant')),
+                    'v2.' . $groupColumn . ' = v.code',
+                    array()
+                )
+                ->where('e.' . $groupColumn . ' <> ""')
+                ->group('v2.' . $groupColumn);
+
+            $connection->query(
+                $connection->insertFromSelect($configurable, $tmpTable, array_keys($data))
+            );
+        }
+    }
+
     /**
      * Match code with entity
      */
