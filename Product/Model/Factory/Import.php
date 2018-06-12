@@ -720,7 +720,6 @@ class Import extends Factory
         $values = array(
             0 => array(
                 'options_container' => '_options_container',
-                'tax_class_id'      => '_tax_class_id',
                 'visibility'        => '_visibility',
             )
         );
